@@ -104,6 +104,7 @@ impl Sound {
         let rate = oxiguitar_play::engine::RATE;
         let (eng, control) = engine(rate, CAPACITY);
         let (to, from) = channel();
+        #[cfg(not(target_arch = "wasm32"))]
         let thread = std::thread::Builder::new()
             .name("oxiguitar-sound".into())
             .spawn(move || {
@@ -122,6 +123,21 @@ impl Sound {
                 .run(&from);
             })
             .ok();
+        #[cfg(target_arch = "wasm32")]
+        let thread = Some(std::thread::task(async move {
+                Thread {
+                    plugins,
+                    tell: Box::new(tell),
+                    rate,
+                    engine: Some(eng),
+                    home: Arc::new(Mutex::new(None)),
+                    stream: None,
+                    plan: None,
+                    routes: Vec::new(),
+                    sources: 0,
+                    score: None,
+                }
+                .run(&from).await }));
         (Sound { to, thread }, control)
     }
 
@@ -157,8 +173,48 @@ struct Thread {
 }
 
 impl Thread {
+    #[cfg(not(target_arch = "wasm32"))]
     fn run(mut self, from: &Receiver<ToSound>) {
         while let Ok(first) = from.recv() {
+            // Of several scores waiting, only the newest is built.
+            let mut next = Some(first);
+            while let Some(m) = next.take() {
+                let m = match m {
+                    ToSound::Score { .. } => {
+                        let mut newest = m;
+                        loop {
+                            match from.try_recv() {
+                                Ok(s @ ToSound::Score { .. }) => newest = s,
+                                Ok(other) => {
+                                    next = Some(other);
+                                    break;
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        newest
+                    }
+                    other => other,
+                };
+                match m {
+                    ToSound::Score { score, revision } => self.score(score, revision, false),
+                    ToSound::Open { device } => self.open(&device),
+                    ToSound::Close => self.close(),
+                    ToSound::Devices => (self.tell)(FromSound::Devices(self.devices())),
+                    ToSound::Quit => {
+                        self.close();
+                        return;
+                    }
+                }
+            }
+        }
+        self.close();
+    }
+
+    // Playground's browser build: the same loop, as a task of the page (patches/guitar-pro.yaml).
+    #[cfg(target_arch = "wasm32")]
+    async fn run(mut self, from: &Receiver<ToSound>) {
+        while let Ok(first) = from.recv().await {
             // Of several scores waiting, only the newest is built.
             let mut next = Some(first);
             while let Some(m) = next.take() {
@@ -364,3 +420,7 @@ fn nothing_plays(plugins: &Plugins) -> String {
         "No installed instrument plays this score's tracks.".to_owned()
     }
 }
+
+// Playground's browser build: the channel, the task (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

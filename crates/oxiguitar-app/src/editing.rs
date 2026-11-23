@@ -1937,3 +1937,7 @@ mod tests {
         assert_eq!(Key::from_name("x"), None);
     }
 }
+
+// Playground's browser build: the clock (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

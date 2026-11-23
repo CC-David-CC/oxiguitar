@@ -1,0 +1,7 @@
+# OxiGuitar in the browser, for Playground (patches/guitar-pro.yaml in github.com/daijro/openplayground).
+# Build with: trunk build --release   (from the repository's root)
+[build]
+target = "index.html"
+public_url = "./"
+filehash = true
+dist = "target/trunk-dist"

@@ -1055,6 +1055,8 @@ dependencies = [
  "block2 0.6.2",
  "coreaudio-rs",
  "dasp_sample",
+ "futures-channel",
+ "futures-util",
  "jni",
  "js-sys",
  "libc",
@@ -1071,6 +1073,8 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "pipewire",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "windows",
  "windows-core",
@@ -3797,12 +3801,21 @@ name = "oxiguitar-app"
 version = "0.11.0"
 dependencies = [
  "i-slint-backend-winit",
+ "js-sys",
+ "oxiguitar-audio-web-plugin",
  "oxiguitar-display",
  "oxiguitar-edit",
+ "oxiguitar-gp-plugin",
+ "oxiguitar-gp3-plugin",
+ "oxiguitar-gp4-plugin",
+ "oxiguitar-gp5-plugin",
+ "oxiguitar-gpx-plugin",
  "oxiguitar-host",
  "oxiguitar-layout",
+ "oxiguitar-midi-plugin",
  "oxiguitar-model",
  "oxiguitar-play",
+ "oxiguitar-playground",
  "oxiguitar-plugin-test",
  "oxiguitar-render",
  "oxiguitar-testgen",
@@ -3812,6 +3825,9 @@ dependencies = [
  "slint",
  "slint-build",
  "tiny-skia 0.12.0",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -3860,6 +3876,14 @@ dependencies = [
  "oxiguitar-audio-cpal",
  "oxiguitar-plugin",
  "serde_json",
+]
+
+[[package]]
+name = "oxiguitar-audio-web-plugin"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "oxiguitar-plugin",
 ]
 
 [[package]]
@@ -3956,6 +3980,7 @@ version = "0.11.0"
 dependencies = [
  "libloading",
  "object",
+ "oxiguitar-playground",
  "oxiguitar-plugin-api",
  "serde_json",
 ]
@@ -3975,6 +4000,7 @@ version = "0.11.0"
 dependencies = [
  "claxon",
  "lewton",
+ "oxiguitar-playground",
  "oxiguitar-plugin",
  "rustysynth",
 ]
@@ -4003,10 +4029,19 @@ dependencies = [
  "oxiguitar-formats",
  "oxiguitar-host",
  "oxiguitar-model",
+ "oxiguitar-playground",
  "oxiguitar-plugin-api",
  "oxiguitar-testgen",
  "rtrb",
  "stats_alloc",
+]
+
+[[package]]
+name = "oxiguitar-playground"
+version = "0.1.0"
+dependencies = [
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]

@@ -36,6 +36,11 @@ pub(crate) struct ManifestFile {
 /// is a library for this system and processor. The error is one sentence
 /// for the user, without the file's name.
 pub(crate) fn read_manifest(path: &Path) -> Result<ManifestFile, String> {
+    // Playground's browser build: the manifests of the plugins linked into the page (patches/guitar-pro.yaml).
+    #[cfg(target_arch = "wasm32")]
+    if let Some(bytes) = oxiguitar_playground::libloading::manifest(path) {
+        return Ok(ManifestFile { manifest: Manifest::parse(&bytes)?, bytes });
+    }
     let file = File::open(path).map_err(|e| format!("it can't be read ({e})"))?;
     let cache = ReadCache::new(file);
     let kind = FileKind::parse(&cache)

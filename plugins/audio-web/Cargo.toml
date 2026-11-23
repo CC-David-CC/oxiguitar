@@ -1,0 +1,14 @@
+# Playground's browser build of OxiGuitar (patches/guitar-pro.yaml in github.com/daijro/openplayground): the
+# audio-device plugin of the page, linked into it. Native builds compile it empty.
+[package]
+name = "oxiguitar-audio-web-plugin"
+version = "0.1.0"
+edition = "2024"
+description = "The OxiGuitar audio-device plugin for the browser: plays OxiGuitar's sound through Web Audio."
+license = "GPL-3.0-or-later"
+publish = false
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+oxiguitar-plugin.workspace = true
+# cpal's Web Audio host; the version follows the other audio-device plugins'.
+cpal = { version = "0.18", default-features = false, features = ["wasm-bindgen"] }

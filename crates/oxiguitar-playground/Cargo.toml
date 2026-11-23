@@ -1,0 +1,13 @@
+# Playground's browser build of OxiGuitar (patches/guitar-pro.yaml in github.com/daijro/openplayground): what
+# wasm32-unknown-unknown lacks (std's clock, files, threads and channels; dlopen). Native builds compile it empty.
+[package]
+name = "oxiguitar-playground"
+version = "0.1.0"
+edition = "2021"
+description = "OxiGuitar in the browser: the clock, files, threads and plugin loading std lacks on wasm32-unknown-unknown"
+license = "GPL-3.0-or-later"
+publish = false
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1"
+wasm-bindgen-futures = "0.4"

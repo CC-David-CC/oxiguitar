@@ -29,3 +29,6 @@ dbg_macro = "warn"
 todo = "warn"
 print_stderr = "allow"
 undocumented_unsafe_blocks = "warn"
+
+[target.'cfg(all(target_arch = "wasm32"))'.dependencies]
+oxiguitar-playground = { path = "../oxiguitar-playground" }

@@ -2641,3 +2641,7 @@ mod tests {
         assert!(plugins.instruments_for(InstrumentClass::Drums).is_empty());
     }
 }
+
+// Playground's browser build: the plugins' folders in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

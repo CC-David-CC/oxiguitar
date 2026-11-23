@@ -1164,3 +1164,7 @@ mod tests {
         assert!(!elsewhere.ask());
     }
 }
+
+// Playground's browser build: the files in memory, the worker's channel (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

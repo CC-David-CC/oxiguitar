@@ -403,3 +403,7 @@ unsafe extern "C" fn host_render(
         out.fill(0.0);
     }
 }
+
+// Playground's browser build: the plugins linked into the page, in place of plugin files (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::libloading;

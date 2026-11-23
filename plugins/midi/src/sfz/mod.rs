@@ -252,3 +252,7 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+// Playground's browser build: the files in memory, read on the page's one thread (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

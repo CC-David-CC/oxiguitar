@@ -542,3 +542,7 @@ mod tests {
         );
     }
 }
+
+// Playground's browser build: the files in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

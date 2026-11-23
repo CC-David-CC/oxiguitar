@@ -1097,6 +1097,14 @@ macro_rules! export_plugin {
             }
         };
 
+        /// The plugin's entry, in Playground's browser build: the plugin is linked into the page, and its entry
+        /// reached by its Rust path (patches/guitar-pro.yaml).
+        #[cfg(all(target_arch = "wasm32", not(feature = "oxp")))]
+        pub extern "C" fn oxiguitar_plugin_v1() -> *const $crate::api::abi::PluginTableV1 {
+            static TABLE: $crate::glue::Table = $crate::glue::table::<$plugin>(MANIFEST_JSON.as_bytes());
+            TABLE.get()
+        }
+
         #[cfg(test)]
         mod oxiguitar_plugin_checks {
             #[allow(unused_imports)]

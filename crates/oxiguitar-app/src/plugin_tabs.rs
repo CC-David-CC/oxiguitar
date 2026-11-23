@@ -322,10 +322,13 @@ impl TabThread {
         sink: impl Fn(Answer) + Send + 'static,
     ) -> TabThread {
         let (requests, rx) = channel();
+        #[cfg(not(target_arch = "wasm32"))]
         let thread = std::thread::Builder::new()
             .name("oxiguitar-plugin-tabs".to_owned())
             .spawn(move || run(&rx, &plugins, dark, &sink))
             .ok();
+        #[cfg(target_arch = "wasm32")]
+        let thread = Some(std::thread::task(async move { run(&rx, &plugins, dark, &sink).await }));
         TabThread {
             requests: Some(requests),
             thread,
@@ -351,6 +354,7 @@ impl Drop for TabThread {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn run(rx: &Receiver<Request>, plugins: &Plugins, mut dark: bool, sink: &dyn Fn(Answer)) {
     let fonts = FontSet::bundled();
     let mut raster = Raster::new();
@@ -358,6 +362,95 @@ fn run(rx: &Receiver<Request>, plugins: &Plugins, mut dark: bool, sink: &dyn Fn(
     let mut rooms: HashMap<(TabId, String), (u32, u32)> = HashMap::new();
     // Sleeps until the window asks, then takes whatever else is waiting.
     while let Ok(first) = rx.recv() {
+        let mut batch = vec![first];
+        batch.extend(rx.try_iter());
+        for request in merge(batch) {
+            match request {
+                Request::Content(tab) => {
+                    let answer = plugins.tab_content(&tab);
+                    answered(
+                        &tab,
+                        answer,
+                        &mut contents,
+                        &rooms,
+                        dark,
+                        &mut raster,
+                        &fonts,
+                        sink,
+                    );
+                }
+                Request::Event { tab, widget, event } => {
+                    let answer = plugins.tab_event(&tab, &widget, event);
+                    answered(
+                        &tab,
+                        answer,
+                        &mut contents,
+                        &rooms,
+                        dark,
+                        &mut raster,
+                        &fonts,
+                        sink,
+                    );
+                }
+                Request::Size { tab, widget, room } => {
+                    rooms.insert((tab.clone(), widget.clone()), room);
+                    if let Some(drawn) = contents
+                        .get(&tab)
+                        .and_then(|c| draw(c, &widget, room, dark, &mut raster, &fonts))
+                    {
+                        sink(Answer::Canvas { tab, drawn });
+                    }
+                }
+                Request::Dark(now) if now != dark => {
+                    dark = now;
+                    for ((tab, widget), room) in &rooms {
+                        if let Some(drawn) = contents
+                            .get(tab)
+                            .and_then(|c| draw(c, widget, *room, dark, &mut raster, &fonts))
+                        {
+                            sink(Answer::Canvas {
+                                tab: tab.clone(),
+                                drawn,
+                            });
+                        }
+                    }
+                }
+                Request::Dark(_) => {}
+                Request::Settings { plugin, event } => {
+                    let content = settings_window(plugins, &plugin, event);
+                    sink(Answer::Settings { plugin, content });
+                }
+                Request::Section {
+                    dialog,
+                    track,
+                    plugin,
+                    section,
+                    settings,
+                    event,
+                } => {
+                    let answer =
+                        track_section(plugins, &track, &plugin, &section, &settings, event);
+                    sink(Answer::Section {
+                        dialog,
+                        plugin,
+                        section,
+                        answer,
+                    });
+                }
+            }
+        }
+    }
+}
+
+// Playground's browser build: the same loop, as a task of the page (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+async fn run(rx: &Receiver<Request>, plugins: &Plugins, mut dark: bool, sink: &dyn Fn(Answer)) {
+    let fonts = FontSet::bundled();
+    let mut raster = Raster::new();
+    let mut contents: HashMap<TabId, TabContent> = HashMap::new();
+    let mut rooms: HashMap<(TabId, String), (u32, u32)> = HashMap::new();
+    // Sleeps until the window asks, then takes whatever else is waiting.
+    while let Ok(first) = rx.recv().await {
         let mut batch = vec![first];
         batch.extend(rx.try_iter());
         for request in merge(batch) {
@@ -696,3 +789,7 @@ mod tests {
         assert!(draw(&content, "nothing", (20, 20), true, &mut raster, &fonts).is_none());
     }
 }
+
+// Playground's browser build: the channel, the task (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

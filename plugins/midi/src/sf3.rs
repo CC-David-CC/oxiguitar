@@ -278,3 +278,7 @@ mod tests {
         assert!(font.get_wave_data().len() > 50_000_000);
     }
 }
+
+// Playground's browser build: decoding on the page's one thread (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

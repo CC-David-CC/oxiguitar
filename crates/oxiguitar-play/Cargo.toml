@@ -35,3 +35,6 @@ harness = false
 
 [lints]
 workspace = true
+
+[target.'cfg(all(target_arch = "wasm32"))'.dependencies]
+oxiguitar-playground = { path = "../oxiguitar-playground" }

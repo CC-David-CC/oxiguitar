@@ -38,6 +38,8 @@ fn opener(url: &str) -> Command {
 /// Opens `url` in the browser. Only `https://` addresses are opened, so
 /// nothing else (a file, a program) can ever be started this way.
 pub(crate) fn open(url: &str) -> Result<(), String> {
+    #[cfg(target_arch = "wasm32")]
+    return crate::web::open_link(url);
     if !oxiguitar_host::is_https(url) {
         return Err(format!("{url} is not a web address"));
     }

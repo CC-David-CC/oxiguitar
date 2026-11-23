@@ -333,3 +333,7 @@ mod tests {
         assert_eq!(get(1, "oxiguitar.midi").as_deref(), Some(r#"{"set":"c"}"#));
     }
 }
+
+// Playground's browser build: the files in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

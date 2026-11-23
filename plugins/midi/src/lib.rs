@@ -384,3 +384,7 @@ impl Instrument for MidiPlugin {
 }
 
 oxiguitar_plugin::export_plugin!(MidiPlugin);
+
+// Playground's browser build: the sound sets in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

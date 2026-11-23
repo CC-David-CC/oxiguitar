@@ -35,6 +35,8 @@ pub(crate) fn from_sound(app: &Shared, m: FromSound) {
     let mut dos = Vec::new();
     match m {
         FromSound::Ready(ready) => {
+            #[cfg(target_arch = "wasm32")]
+            crate::web::sound_ready(app);
             let silent = ready.silent.clone();
             dos = app.borrow_mut().player.ready(*ready);
             for s in silent {
@@ -63,6 +65,10 @@ pub(crate) fn from_sound(app: &Shared, m: FromSound) {
 
 /// Says `text` in the footer, once a session.
 fn tell_once(app: &Shared, level: Level, text: String, link: Option<(&str, &str)>) {
+    #[cfg(target_arch = "wasm32")]
+    if crate::web::quiet(&text) {
+        return;
+    }
     {
         let mut s = app.borrow_mut();
         if !s.player_told.insert(text.clone()) {
@@ -156,6 +162,12 @@ pub(crate) fn sync(app: &Shared) {
     } else {
         String::new()
     };
+    #[cfg(target_arch = "wasm32")]
+    let (available, why) = if has_score && s.outputs_available && crate::web::sound_set_missing() {
+        (true, String::new())
+    } else {
+        (available, why)
+    };
     ui.set_player_available(available);
     ui.set_player_why(why.into());
     ui.set_player_state(match p.state() {
@@ -218,6 +230,10 @@ pub(crate) fn score_changed(app: &Shared, opened: bool) {
 
 /// A Player tab control was used.
 pub(crate) fn action(app: &Shared, name: &str) {
+    #[cfg(target_arch = "wasm32")]
+    if crate::web::sound_set_first(name) {
+        return;
+    }
     let dos = match name {
         "play" => play(app, false),
         "play-selection" => play(app, true),
@@ -355,6 +371,11 @@ fn put_caret_at(app: &Shared, p: Place) {
 /// Guitar Pro 8). Ctrl + Left and Right move a bar back and on (the sound
 /// while it runs, else the caret). Returns whether the key was taken.
 pub(crate) fn key(app: &Shared, name: &str, shift: bool, ctrl: bool, alt: bool) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    if name == " " && !shift && !ctrl && !alt && crate::web::sound_set_missing() && app.borrow().track_count > 0 {
+        action(app, "play");
+        return true;
+    }
     if name == " " && !shift && !ctrl && !alt {
         let state = app.borrow().player.state();
         if matches!(state, State::Playing | State::Starting) {

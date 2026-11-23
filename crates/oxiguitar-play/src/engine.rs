@@ -1131,3 +1131,7 @@ fn time_of(pieces: &[Piece], frame: u64) -> f64 {
         .unwrap_or_default();
     piece.time + (frame - piece.frame) as f64 * piece.step
 }
+
+// Playground's browser build: the clock (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

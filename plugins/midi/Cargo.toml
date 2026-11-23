@@ -35,3 +35,6 @@ unreachable_pub = "warn"
 all = { level = "warn", priority = -1 }
 dbg_macro = "warn"
 todo = "warn"
+
+[target.'cfg(all(target_arch = "wasm32"))'.dependencies]
+oxiguitar-playground = { path = "../../crates/oxiguitar-playground" }

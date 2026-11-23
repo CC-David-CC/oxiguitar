@@ -202,10 +202,13 @@ impl Worker {
     ) -> Worker {
         let (requests, rx) = channel();
         open.connect(requests.clone());
+        #[cfg(not(target_arch = "wasm32"))]
         let thread = std::thread::Builder::new()
             .name("oxiguitar-worker".to_owned())
             .spawn(move || run(&rx, plugins, open, &sink))
             .ok();
+        #[cfg(target_arch = "wasm32")]
+        let thread = Some(std::thread::task(async move { run(&rx, plugins, open, &sink).await }));
         Worker { requests, thread }
     }
 
@@ -270,6 +273,7 @@ fn track_shape(score: &Score) -> Vec<(String, u8, bool, usize)> {
         .collect()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, sink: &dyn Fn(Event)) {
     let engraver = match Engraver::new() {
         Ok(e) => e,
@@ -296,6 +300,252 @@ fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, sink: &d
     loop {
         if pending.is_empty() {
             match rx.recv() {
+                Ok(r) => pending.push_back(r),
+                Err(_) => return,
+            }
+        }
+        pending.extend(rx.try_iter());
+        let Some(request) = pending.pop_front() else {
+            continue;
+        };
+        let superseded = |p: &VecDeque<Request>, tiles: bool| {
+            p.iter().any(|r| match r {
+                Request::Open(_)
+                | Request::New
+                | Request::Engrave(_)
+                | Request::ApplyTool(_)
+                | Request::Edit { .. }
+                | Request::Undo
+                | Request::Redo => true,
+                Request::Selection(..) => false,
+                Request::Stop => true,
+                Request::Tiles { .. } => tiles,
+                Request::PluginEdit { .. } | Request::PluginTool(..) => true,
+                Request::ExportPdf(..)
+                | Request::Save(_)
+                | Request::ConfirmSave
+                | Request::CancelSave => false,
+            })
+        };
+        // No editing while playing: the window and plugins alike are
+        // refused until the sound is paused or stopped.
+        let edits = matches!(
+            request,
+            Request::ApplyTool(_)
+                | Request::Edit { .. }
+                | Request::Undo
+                | Request::Redo
+                | Request::PluginEdit { .. }
+                | Request::PluginTool(..)
+        );
+        if edits && st.open.playing() {
+            sink(Event::Refused);
+            continue;
+        }
+        match request {
+            Request::Stop => return,
+            Request::Open(path) => open(&mut st, path, sink),
+            Request::New => {
+                let doc = Document::untitled(&st.plugins);
+                opened(&mut st, doc, None, sink);
+            }
+            Request::Engrave(settings) => {
+                st.settings = settings;
+                if !superseded(&pending, false) {
+                    engrave(&mut st, sink);
+                }
+            }
+            Request::Tiles {
+                engraving,
+                paint,
+                scale,
+                dark,
+                tiles,
+            } => {
+                if engraving != st.engraving || superseded(&pending, true) {
+                    continue;
+                }
+                let theme = if dark { Theme::DARK } else { Theme::LIGHT };
+                for (col, row) in tiles {
+                    let Some(px) = st.sheets.draw_tile(
+                        &mut st.raster,
+                        &st.engraver.fonts,
+                        &theme,
+                        col,
+                        row,
+                        scale,
+                    ) else {
+                        continue;
+                    };
+                    sink(Event::Tile {
+                        engraving,
+                        paint,
+                        col,
+                        row,
+                        rgba: px.take(),
+                    });
+                    pending.extend(rx.try_iter());
+                    if superseded(&pending, true) {
+                        break;
+                    }
+                }
+            }
+            Request::ApplyTool(i) => {
+                let Some(doc) = st.doc.as_mut() else {
+                    continue;
+                };
+                let (report, changed) = doc.apply_tool(i);
+                sink(Event::Tools(doc.tools()));
+                sink(Event::Message(Level::Info, report));
+                if changed && changed_score(&mut st, None, sink) {
+                    st.stale = true;
+                } else {
+                    engrave(&mut st, sink);
+                }
+            }
+            Request::Edit {
+                command,
+                caret,
+                selection,
+            } => {
+                let Some(doc) = st.doc.as_mut() else {
+                    continue;
+                };
+                let mut wait = false;
+                if let Some(caret) = doc.edit(command, caret, selection) {
+                    wait = changed_score(&mut st, Some(caret), sink);
+                    st.stale = true;
+                }
+                // Typing ahead: the last edit engraves. A changed track list
+                // waits for the window's settings (`changed_score`).
+                pending.extend(rx.try_iter());
+                if st.stale && !wait && !superseded(&pending, false) {
+                    engrave(&mut st, sink);
+                }
+            }
+            Request::Undo | Request::Redo => {
+                let Some(doc) = st.doc.as_mut() else {
+                    continue;
+                };
+                let done = if matches!(request, Request::Undo) {
+                    doc.undo()
+                } else {
+                    doc.redo()
+                };
+                if done.is_some() {
+                    sink(Event::Tools(doc.tools()));
+                    if changed_score(&mut st, None, sink) {
+                        st.stale = true;
+                    } else {
+                        engrave(&mut st, sink);
+                    }
+                }
+            }
+            Request::Save(to) => save(&mut st, to, sink),
+            Request::ConfirmSave => {
+                if let Some(prepared) = st.pending_save.take() {
+                    write_save(&mut st, &prepared, sink);
+                }
+            }
+            Request::CancelSave => st.pending_save = None,
+            Request::PluginEdit {
+                plugin,
+                revision,
+                name,
+                score,
+            } => {
+                let Some(doc) = st.doc.as_mut() else {
+                    continue;
+                };
+                if revision != st.revision {
+                    sink(Event::Message(
+                        Level::Warning,
+                        format!(
+                            "{plugin}: its change came after another and was left out: {name}."
+                        ),
+                    ));
+                    continue;
+                }
+                doc.apply_change(&name, *score);
+                sink(Event::Tools(doc.tools()));
+                if changed_score(&mut st, None, sink) {
+                    st.stale = true;
+                } else {
+                    engrave(&mut st, sink);
+                }
+            }
+            Request::PluginTool(plugin, tool) => {
+                let tools = st.plugins.tools();
+                let Some(t) = tools.iter().find(|t| {
+                    t.spec.id == tool && t.plugin.manifest.as_ref().is_some_and(|m| m.id == plugin)
+                }) else {
+                    continue;
+                };
+                let name = t.spec.name.clone();
+                match st.plugins.run_tool(*t) {
+                    Ok(report) if !report.trim().is_empty() => {
+                        sink(Event::Message(Level::Info, format!("{name}: {report}")));
+                    }
+                    Ok(_) => {}
+                    Err(e) => sink(Event::Message(Level::Error, format!("{name}: {e}"))),
+                }
+            }
+            Request::Selection(selection, selection2) => {
+                st.plugins.push(PluginEvent::Selection(selection));
+                st.plugins.push(PluginEvent::Selection2(selection2));
+            }
+            Request::ExportPdf(path, settings) => {
+                let Some(doc) = st.doc.as_ref() else {
+                    continue;
+                };
+                let name = file_name(&path);
+                let message = match st.engraver.pdf(doc, &settings) {
+                    Ok((bytes, pages)) => match std::fs::write(&path, bytes) {
+                        Ok(()) => (
+                            Level::Info,
+                            format!(
+                                "Exported {name}: {pages} page{}.",
+                                if pages == 1 { "" } else { "s" }
+                            ),
+                        ),
+                        Err(e) => (Level::Error, format!("Could not write {name}: {e}.")),
+                    },
+                    Err(e) => (Level::Error, format!("Could not export {name}: {e}.")),
+                };
+                sink(Event::Message(message.0, message.1));
+            }
+        }
+    }
+}
+
+// Playground's browser build: the same loop, as a task of the page (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+async fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, sink: &dyn Fn(Event)) {
+    let engraver = match Engraver::new() {
+        Ok(e) => e,
+        Err(e) => {
+            sink(Event::Message(Level::Error, e));
+            return;
+        }
+    };
+    let mut st = State {
+        plugins,
+        engraver,
+        doc: None,
+        open: open_score,
+        revision: 0,
+        settings: Settings::default(),
+        stale: false,
+        sheets: Sheets::default(),
+        engraving: 0,
+        raster: Raster::new(),
+        pending_save: None,
+        track_shape: Vec::new(),
+    };
+    let mut pending: VecDeque<Request> = VecDeque::new();
+    loop {
+        if pending.is_empty() {
+            match rx.recv().await {
                 Ok(r) => pending.push_back(r),
                 Err(_) => return,
             }
@@ -1122,3 +1372,7 @@ mod tests {
         );
     }
 }
+
+// Playground's browser build: the channel, the task, the files in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

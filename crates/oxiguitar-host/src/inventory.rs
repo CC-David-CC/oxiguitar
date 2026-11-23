@@ -287,6 +287,9 @@ pub fn plugin_notices(plugins: &Plugins) -> Vec<Notice> {
 /// The plugin files directly in `folder`, by name. Unreadable folders give
 /// none: a missing system folder is normal.
 pub(crate) fn plugin_files(folder: &Path) -> Vec<PathBuf> {
+    // Playground's browser build: the plugins linked into the page (patches/guitar-pro.yaml).
+    #[cfg(target_arch = "wasm32")]
+    return oxiguitar_playground::libloading::files(folder);
     let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
     };

@@ -520,3 +520,7 @@ pub(crate) mod tests {
         dir
     }
 }
+
+// Playground's browser build: the folders in memory, HOME and the program's place (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

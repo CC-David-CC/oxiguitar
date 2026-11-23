@@ -96,3 +96,17 @@ all = { level = "warn", priority = -1 }
 dbg_macro = "warn"
 todo = "warn"
 print_stderr = "allow"
+
+[target.'cfg(all(target_arch = "wasm32"))'.dependencies]
+oxiguitar-playground = { path = "../oxiguitar-playground" }
+oxiguitar-gp3-plugin = { path = "../../plugins/gp3" }
+oxiguitar-gp4-plugin = { path = "../../plugins/gp4" }
+oxiguitar-gp5-plugin = { path = "../../plugins/gp5" }
+oxiguitar-gpx-plugin = { path = "../../plugins/gpx" }
+oxiguitar-gp-plugin = { path = "../../plugins/gp" }
+oxiguitar-midi-plugin = { path = "../../plugins/midi" }
+oxiguitar-audio-web-plugin = { path = "../../plugins/audio-web" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Storage", "Response", "DragEvent", "DataTransfer", "FileList", "File", "Blob", "Element", "HtmlElement", "Node", "console"] }

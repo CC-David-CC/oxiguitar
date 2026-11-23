@@ -265,3 +265,7 @@ mod tests {
         assert_eq!(missing, Ok(Settings::default()));
     }
 }
+
+// Playground's browser build: settings.json in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

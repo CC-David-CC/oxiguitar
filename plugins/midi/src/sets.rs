@@ -324,3 +324,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+// Playground's browser build: the sound sets in memory (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;

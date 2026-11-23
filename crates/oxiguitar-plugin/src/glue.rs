@@ -56,7 +56,13 @@ use crate::{Host, HostServices, Plugin, dispatch_kept};
 /// The plugin, once the host has started it. One `.oxp` file holds one
 /// plugin and its own copy of this crate, so one cell per library is one
 /// per plugin.
+#[cfg(not(target_arch = "wasm32"))]
 static PLUGIN: OnceLock<Box<dyn Plugin>> = OnceLock::new();
+// Playground's browser build: one plugin per type, as several are linked into the page (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+static PLUGIN: web::Plugins = web::Plugins;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 /// A plugin's table, as `export_plugin!` stores it in a `static`.
 #[derive(Debug)]
@@ -94,8 +100,14 @@ pub const fn table<P: Plugin>(manifest: &'static [u8]) -> Table {
         size: PLUGIN_TABLE_V1_SIZE,
         interface_minor: oxiguitar_plugin_api::INTERFACE.1,
         manifest: RawBytes::of(manifest),
+        #[cfg(not(target_arch = "wasm32"))]
         start: start::<P>,
+        #[cfg(not(target_arch = "wasm32"))]
         call,
+        #[cfg(target_arch = "wasm32")]
+        start: web::start::<P>,
+        #[cfg(target_arch = "wasm32")]
+        call: web::call::<P>,
         realtime: &REALTIME.0,
     })
 }

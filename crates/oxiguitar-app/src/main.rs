@@ -464,6 +464,8 @@ fn wrong_build_hint(display: &str) -> Option<&'static str> {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    #[cfg(target_arch = "wasm32")]
+    web::start();
     // The winit backend gives us the window's raw events for interface zoom.
     // It draws with this build's display system only.
     if let Err(e) = slint::BackendSelector::new()
@@ -500,6 +502,8 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         oxiguitar_host::start(oxiguitar_host::Folders::here(), display_system(), core)
     };
+    #[cfg(target_arch = "wasm32")]
+    let startup = web::started(startup);
     let open_extensions = startup.plugins.read_extensions();
     let save_formats = SaveFormat::writable(&startup.plugins);
     let mut shell = Shell::default();
@@ -696,6 +700,10 @@ fn main() -> Result<(), slint::PlatformError> {
         "Music font: Bravura (Steinberg, SIL OFL 1.1). Text font: Noto Sans (SIL OFL 1.1). GUI: Slint (GPL-3.0).".to_owned(),
         "OxiGuitar never connects to the internet on its own and sends nothing anywhere.".to_owned(),
     ];
+    #[cfg(target_arch = "wasm32")]
+    about.retain(|l| !l.starts_with("OxiGuitar never connects"));
+    #[cfg(target_arch = "wasm32")]
+    about.push("In the browser (Playground), Play downloads the sound set the first time it is pressed: GeneralUser GS 2.0.3, by S. Christian Collins. Nothing else is fetched, and nothing is sent anywhere.".to_owned());
     about.extend(about_folders(&startup.inventory.folders, args.safe_mode));
     ui.set_about_lines(lines(&about.iter().map(String::as_str).collect::<Vec<_>>()));
     PLUGIN_TOOLS.with(|t| {
@@ -1278,6 +1286,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let a = app.clone();
     slint::Timer::single_shot(Duration::ZERO, move || show_advice(&a));
 
+    #[cfg(target_arch = "wasm32")]
+    web::ready();
     ui.run()?;
     APP.with(|a| a.borrow_mut().take());
     Ok(())
@@ -2079,6 +2089,8 @@ fn about_folders(folders: &[PathBuf], safe_mode: bool) -> Vec<String> {
 /// Tools → Plugins: the plugin manager's window, made the first time and
 /// shown again (in front) after that. It doesn't block the main window.
 fn open_plugin_manager(app: &Shared) {
+    #[cfg(target_arch = "wasm32")]
+    return web::no_plugin_windows(app);
     let existing = app
         .borrow()
         .manager
@@ -2433,6 +2445,8 @@ fn sync_edit_state(app: &Shared, edit: &document::EditState) {
     let window_title = {
         let mut s = app.borrow_mut();
         s.modified = edit.modified;
+        #[cfg(target_arch = "wasm32")]
+        web::unsaved(edit.modified);
         match &s.doc_name {
             Some(name) if edit.modified => format!("• {name} — OxiGuitar"),
             Some(name) => format!("{name} — OxiGuitar"),
@@ -3095,6 +3109,9 @@ fn go_on(app: &Shared, then: Then) {
         Then::OpenDialog => open_dialog(app),
         Then::Open(path) => app.borrow().worker.send(Request::Open(path)),
         Then::Quit => {
+            // A page isn't quit: its tab is closed.
+            #[cfg(target_arch = "wasm32")]
+            return;
             let _ = slint::quit_event_loop();
         }
     }
@@ -4019,6 +4036,8 @@ fn app_rows_settings(app: &Shared, index: i32) -> Option<String> {
 /// Opens the settings window of the plugin `id` (interface 1.3), made the
 /// first time; it shows one plugin at a time.
 fn open_settings_window(app: &Shared, id: String) {
+    #[cfg(target_arch = "wasm32")]
+    return web::no_plugin_windows(app);
     let existing = app
         .borrow()
         .settings_window
@@ -4355,6 +4374,10 @@ fn question_answered(app: &Shared, i: i32) {
 /// File → Save: the file the score came from, in its own format unless
 /// that loses part of the score (the worker asks then).
 fn save(app: &Shared) {
+    #[cfg(target_arch = "wasm32")]
+    if web::downloaded(app) {
+        return save_as_dialog(app);
+    }
     // A new score has no file yet: Save asks for a name, as Save As.
     if app.borrow().untitled {
         save_as_dialog(app);
@@ -4366,6 +4389,8 @@ fn save(app: &Shared) {
 /// File → Save As…: any name, in a format the plugins write, chosen by the
 /// name's extension (Guitar Pro 7–8's .gp when it has none).
 fn save_as_dialog(app: &Shared) {
+    #[cfg(target_arch = "wasm32")]
+    return web::save_as_dialog(app);
     if let Some(problem) = no_dialogs() {
         app.borrow_mut().after_save = None;
         message(app, Level::Warning, problem);
@@ -4453,6 +4478,8 @@ fn save_as_dialog(app: &Shared) {
 /// File → Open: the system's dialog, off the UI thread where the system
 /// allows it, so the window keeps drawing.
 fn open_dialog(app: &Shared) {
+    #[cfg(target_arch = "wasm32")]
+    return web::open_dialog(app);
     if let Some(problem) = no_dialogs() {
         message(app, Level::Warning, problem);
         return;
@@ -4480,6 +4507,8 @@ fn open_dialog(app: &Shared) {
 
 /// File → Export PDF…: the shown tracks, in pages, on the chosen paper.
 fn export_dialog(app: &Shared) {
+    #[cfg(target_arch = "wasm32")]
+    return web::export_dialog(app);
     if let Some(problem) = no_dialogs() {
         message(app, Level::Warning, problem);
         return;
@@ -4974,3 +5003,11 @@ mod tests {
         assert_eq!(step_ui_zoom(0.5, -1), 0.5);
     }
 }
+
+// Playground's browser build: the page's side, the desktop's file dialogs it never opens, the clock (patches/guitar-pro.yaml).
+#[cfg(target_arch = "wasm32")]
+mod web;
+#[cfg(target_arch = "wasm32")]
+use web::rfd;
+#[cfg(target_arch = "wasm32")]
+use oxiguitar_playground::std;
