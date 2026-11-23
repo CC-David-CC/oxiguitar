@@ -707,6 +707,12 @@ impl Document {
                 .collect(),
         };
         let kept = sidecar.write_for(&prepared.path);
+        self.accept_saved(prepared);
+        Ok(kept.err())
+    }
+
+    /// Updates the document after its score bytes have been stored.
+    pub(crate) fn accept_saved(&mut self, prepared: &Prepared) {
         if prepared.path == self.path {
             self.opened_losses.clear();
         }
@@ -714,7 +720,6 @@ impl Document {
         self.format = prepared.format.clone();
         self.untitled = false;
         self.history.mark_saved();
-        Ok(kept.err())
     }
 
     /// The file's name, for the window's title ("Untitled" before a new

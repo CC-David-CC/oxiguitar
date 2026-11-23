@@ -1,0 +1,19 @@
+.oxiguitar-workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.oxiguitar-workspace iframe {
+  border: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+}
+.oxiguitar-workspace p {
+  margin: 0;
+  padding: 4px 8px;
+  font: 12px system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}

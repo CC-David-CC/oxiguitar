@@ -703,7 +703,7 @@ fn main() -> Result<(), slint::PlatformError> {
     #[cfg(target_arch = "wasm32")]
     about.retain(|l| !l.starts_with("OxiGuitar never connects"));
     #[cfg(target_arch = "wasm32")]
-    about.push("In the browser (Playground), Play downloads the sound set the first time it is pressed: GeneralUser GS 2.0.3, by S. Christian Collins. Nothing else is fetched, and nothing is sent anywhere.".to_owned());
+    about.push("In the browser, Play loads GeneralUser GS 2.0.3 by S. Christian Collins.".to_owned());
     about.extend(about_folders(&startup.inventory.folders, args.safe_mode));
     ui.set_about_lines(lines(&about.iter().map(String::as_str).collect::<Vec<_>>()));
     PLUGIN_TOOLS.with(|t| {

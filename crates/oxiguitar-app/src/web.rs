@@ -30,6 +30,7 @@ const DOWNLOADS: &str = "/tmp/downloads";
 /// Where files opened from the computer and dropped files are kept (they go to Files when saved).
 const OPENED: &str = "/OxiGuitar/Opened";
 const DROPPED: &str = "/OxiGuitar/Dropped";
+const WORKSPACE_DROP: &str = "/tmp/oxiguitar-dropped";
 /// settings.json, kept in the browser's storage under [`SETTINGS_KEY`].
 const SETTINGS: &str = "/home/web/.config/oxiguitar/settings.json";
 const SETTINGS_KEY: &str = "oxiguitar-settings";
@@ -102,7 +103,9 @@ pub(crate) fn ready() {
         };
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(buffer) = wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
-                let path = Path::new(DROPPED).join(file.name());
+                let name = file.name();
+                let Some(filename) = Path::new(&name).file_name() else { return; };
+                let path = Path::new(if workspace() { WORKSPACE_DROP } else { DROPPED }).join(filename);
                 fs::put(&path, js_sys::Uint8Array::new(&buffer).to_vec());
                 open(path);
             }
@@ -113,6 +116,7 @@ pub(crate) fn ready() {
         let _ = canvas.add_event_listener_with_callback("dragover", over.into_js_value().unchecked_ref());
         let _ = canvas.add_event_listener_with_callback("drop", drop.into_js_value().unchecked_ref());
     }
+    call("ready", &[]);
 }
 
 fn shared() -> Option<Shared> {
@@ -143,6 +147,40 @@ fn call(method: &str, args: &[JsValue]) -> Option<JsValue> {
     let api = Some(get(&js_sys::global(), "playgroundFiles")).filter(JsValue::is_object)?;
     let f = get(&api, method).dyn_into::<js_sys::Function>().ok()?;
     f.apply(&api, &args.iter().collect::<js_sys::Array>()).ok()
+}
+
+pub(crate) fn workspace() -> bool {
+    get(&get(&js_sys::global(), "playgroundFiles"), "workspace").as_bool() == Some(true)
+}
+
+pub(crate) fn document_opened(path: Option<&Path>) {
+    if workspace() {
+        let value = path.map(|path| format!("browser:{}", path.display()).into()).unwrap_or(JsValue::NULL);
+        call("opened", &[value]);
+    }
+}
+
+pub(crate) async fn persist(path: &Path, bytes: &[u8], pdf: bool) -> Result<(), String> {
+    let path = JsValue::from(format!("browser:{}", path.display()));
+    let data = js_sys::Uint8Array::from(bytes);
+    let receipt = call("persist", &[path, data.into(), pdf.into()])
+        .and_then(|value| value.dyn_into::<js_sys::Promise>().ok())
+        .ok_or("Files is unavailable.")?;
+    let result = wasm_bindgen_futures::JsFuture::from(receipt).await.map_err(|error| {
+        get(&error, "message").as_string().unwrap_or_else(|| "Files could not save this document.".to_owned())
+    })?;
+    if result.as_bool() != Some(true) {
+        return Err("Files did not confirm the save.".into());
+    }
+    Ok(())
+}
+
+pub(crate) async fn export_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if workspace() {
+        persist(path, bytes, true).await
+    } else {
+        fs::write(path, bytes).map_err(|error| error.to_string())
+    }
 }
 
 async fn wait(v: Option<JsValue>) -> Option<JsValue> {
@@ -265,7 +303,9 @@ pub(crate) fn export_dialog(app: &Shared) {
 
 /// A score saved as a download has no place in Files: its next Save asks where, as Playground's dialog promises.
 pub(crate) fn downloaded(app: &Shared) -> bool {
-    app.borrow().folder.as_deref() == Some(Path::new(DOWNLOADS))
+    let app = app.borrow();
+    let folder = app.folder.as_deref();
+    folder == Some(Path::new(DOWNLOADS)) || workspace() && folder == Some(Path::new(WORKSPACE_DROP))
 }
 
 /// The score's unsaved state, for Playground's leave warning.
@@ -286,6 +326,9 @@ fn mirror() {
             if let (Some(s), Ok(text)) = (storage(), fs::read_to_string(&p)) {
                 let _ = s.set_item(SETTINGS_KEY, &text);
             }
+            continue;
+        }
+        if workspace() {
             continue;
         }
         if p.starts_with(DOWNLOADS) {
@@ -346,9 +389,10 @@ pub(crate) fn sound_set_first(action: &str) -> bool {
         return true;
     }
     SOUND.set(Sound::Fetching);
-    status(Some("Downloading the sounds: GeneralUser GS, 8 MB…"));
+    status(Some("Loading the sounds: GeneralUser GS…"));
     wasm_bindgen_futures::spawn_local(async {
-        match fetch(SOUND_SET).await {
+        let source = if workspace() { "./GeneralUserGS.sf3" } else { SOUND_SET };
+        match fetch(source).await {
             Ok(bytes) => {
                 fs::put(Path::new(SOUND_SET_AT), bytes);
                 SOUND.set(Sound::Preparing);
@@ -387,11 +431,6 @@ fn status(text: Option<&str>) {
     let el = shown.or_else(|| {
         let el = document.create_element("div").ok()?;
         el.set_id("oxiguitar-status");
-        let _ = el.set_attribute(
-            "style",
-            "position:fixed;right:16px;bottom:40px;z-index:10;padding:6px 12px;border-radius:6px;background:#2d6a45;\
-             color:#fff;font:13px system-ui,sans-serif;pointer-events:none",
-        );
         document.body()?.append_child(&el).ok()?;
         Some(el)
     });

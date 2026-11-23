@@ -441,7 +441,11 @@ fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, sink: &d
                     }
                 }
             }
-            Request::Save(to) => save(&mut st, to, sink),
+            Request::Save(to) => {
+                if let Some(prepared) = prepare_save(&mut st, to, sink) {
+                    write_save(&mut st, &prepared, sink);
+                }
+            }
             Request::ConfirmSave => {
                 if let Some(prepared) = st.pending_save.take() {
                     write_save(&mut st, &prepared, sink);
@@ -687,10 +691,14 @@ async fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, si
                     }
                 }
             }
-            Request::Save(to) => save(&mut st, to, sink),
+            Request::Save(to) => {
+                if let Some(prepared) = prepare_save(&mut st, to, sink) {
+                    write_web_save(&mut st, &prepared, sink).await;
+                }
+            }
             Request::ConfirmSave => {
                 if let Some(prepared) = st.pending_save.take() {
-                    write_save(&mut st, &prepared, sink);
+                    write_web_save(&mut st, &prepared, sink).await;
                 }
             }
             Request::CancelSave => st.pending_save = None,
@@ -746,7 +754,7 @@ async fn run(rx: &Receiver<Request>, plugins: Plugins, open_score: OpenScore, si
                 };
                 let name = file_name(&path);
                 let message = match st.engraver.pdf(doc, &settings) {
-                    Ok((bytes, pages)) => match std::fs::write(&path, bytes) {
+                    Ok((bytes, pages)) => match crate::web::export_bytes(&path, &bytes).await {
                         Ok(()) => (
                             Level::Info,
                             format!(
@@ -773,6 +781,8 @@ fn open(st: &mut State, path: PathBuf, sink: &dyn Fn(Event)) {
 
 /// A score opened or made: plugins hear of it, then the window.
 fn opened(st: &mut State, doc: Document, folder: Option<PathBuf>, sink: &dyn Fn(Event)) {
+    #[cfg(target_arch = "wasm32")]
+    crate::web::document_opened((!doc.untitled).then_some(doc.path.as_path()));
     // Plugins hear of it as the window does (pushing never waits).
     st.revision += 1;
     st.open.set(Some(doc.score.clone()), st.revision);
@@ -803,10 +813,14 @@ fn opened(st: &mut State, doc: Document, folder: Option<PathBuf>, sink: &dyn Fn(
 
 /// File → Save and Save As: the file is got ready, then written, or held
 /// while the user is asked.
-fn save(st: &mut State, to: Option<(PathBuf, String)>, sink: &dyn Fn(Event)) {
+fn prepare_save(
+    st: &mut State,
+    to: Option<(PathBuf, String)>,
+    sink: &dyn Fn(Event),
+) -> Option<Prepared> {
     let Some(doc) = st.doc.as_ref() else {
         sink(Event::SaveFailed);
-        return;
+        return None;
     };
     let to = match to {
         Some((path, id)) => match SaveFormat::writable(&st.plugins)
@@ -820,7 +834,7 @@ fn save(st: &mut State, to: Option<(PathBuf, String)>, sink: &dyn Fn(Event)) {
                     "No installed plugin writes that format.".to_owned(),
                 ));
                 sink(Event::SaveFailed);
-                return;
+                return None;
             }
         },
         None => None,
@@ -835,11 +849,13 @@ fn save(st: &mut State, to: Option<(PathBuf, String)>, sink: &dyn Fn(Event)) {
                 lines,
                 elsewhere,
             });
+            None
         }
-        Ok(prepared) => write_save(st, &prepared, sink),
+        Ok(prepared) => Some(prepared),
         Err(e) => {
             sink(Event::Message(Level::Error, e));
             sink(Event::SaveFailed);
+            None
         }
     }
 }
@@ -850,24 +866,47 @@ fn write_save(st: &mut State, prepared: &Prepared, sink: &dyn Fn(Event)) {
         return;
     };
     match doc.save(prepared) {
-        Ok(warning) => {
-            if let Some(warning) = warning {
-                sink(Event::Message(Level::Error, warning));
-            }
-            let name = doc.name();
-            sink(Event::Message(Level::Info, format!("Saved {name}.")));
-            sink(Event::Saved {
-                name,
-                edit: doc.edit_state(),
-                pdf_name: doc.pdf_name(),
-                folder: doc.path.parent().map(PathBuf::from),
-            });
-        }
-        Err(e) => {
-            sink(Event::Message(Level::Error, e));
-            sink(Event::SaveFailed);
-        }
+        Ok(warning) => report_saved(doc, warning, sink),
+        Err(error) => report_save_failed(error, sink),
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn write_web_save(st: &mut State, prepared: &Prepared, sink: &dyn Fn(Event)) {
+    if !crate::web::workspace() {
+        return write_save(st, prepared, sink);
+    }
+    let Some(doc) = st.doc.as_mut() else {
+        sink(Event::SaveFailed);
+        return;
+    };
+    match crate::web::persist(&prepared.path, &prepared.data, false).await {
+        Ok(()) => {
+            std::fs::put(&prepared.path, prepared.data.clone());
+            doc.accept_saved(prepared);
+            report_saved(doc, None, sink);
+        }
+        Err(error) => report_save_failed(error, sink),
+    }
+}
+
+fn report_saved(doc: &Document, warning: Option<String>, sink: &dyn Fn(Event)) {
+    if let Some(warning) = warning {
+        sink(Event::Message(Level::Error, warning));
+    }
+    let name = doc.name();
+    sink(Event::Message(Level::Info, format!("Saved {name}.")));
+    sink(Event::Saved {
+        name,
+        edit: doc.edit_state(),
+        pdf_name: doc.pdf_name(),
+        folder: doc.path.parent().map(PathBuf::from),
+    });
+}
+
+fn report_save_failed(error: String, sink: &dyn Fn(Event)) {
+    sink(Event::Message(Level::Error, error));
+    sink(Event::SaveFailed);
 }
 
 fn engrave(st: &mut State, sink: &dyn Fn(Event)) {

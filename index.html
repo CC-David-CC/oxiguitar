@@ -7,25 +7,10 @@
   <!-- OxiGuitar in the browser, for Playground (patches/guitar-pro.yaml in github.com/daijro/openplayground). -->
   <link data-trunk rel="rust" href="crates/oxiguitar-app/Cargo.toml" data-bin="oxiguitar" data-wasm-opt="0" />
   <link data-trunk rel="icon" href="assets/icon/png/oxiguitar-64.png" />
-  <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #202020; }
-    /* Slint sizes the canvas to the window's preferred size; the page's size wins, and Slint follows it (Playground's
-       bar, above it, has its own rule for the app's canvas, which wins over this one). */
-    body > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; outline: none; }
-    #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      color: #dcdcdc; font: 14px system-ui, sans-serif; pointer-events: none; }
-  </style>
-  <script>
-    // Browsers keep a page's audio off until the person clicks or types: the player's AudioContext starts then.
-    {
-      const contexts = []
-      if (window.AudioContext) window.AudioContext = class extends window.AudioContext {
-        constructor(...args) { super(...args); contexts.push(this) }
-      }
-      const resume = () => contexts.forEach((c) => c.state === 'suspended' && c.resume().catch(() => {}))
-      for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type, resume, { capture: true })
-    }
-  </script>
+  <link data-trunk rel="copy-file" href="web/canvas.css" />
+  <link data-trunk rel="copy-file" href="web/startup.mjs" />
+  <link rel="stylesheet" href="./canvas.css" />
+  <script type="module" src="./startup.mjs"></script>
 </head>
 <body>
   <canvas id="canvas"></canvas>

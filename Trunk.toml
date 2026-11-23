@@ -3,5 +3,6 @@
 [build]
 target = "index.html"
 public_url = "./"
-filehash = true
+filehash = false
+inject_scripts = false
 dist = "target/trunk-dist"
