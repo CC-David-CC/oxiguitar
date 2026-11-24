@@ -99,7 +99,7 @@ export function mount(host) {
       const sha256 = opened.get(source);
       opened.delete(source);
       if (sha256) bind(source, sha256, 'Opened');
-      else bind(null);
+      else bind(null, null);
     },
     saveAs({name, types}) {
       return run(async () => {
